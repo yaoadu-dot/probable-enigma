@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import requests
 from datetime import datetime
 
 # ==========================================
@@ -33,6 +34,10 @@ watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 # NATIVE MATHEMATICAL INDICATOR ENGINES
 # ==========================================
 def calculate_money_line(df):
+    # Flatten MultiIndex columns if present to avoid indexing mismatches
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+        
     close_ser = df['Close']
     high_ser = df['High']
     low_ser = df['Low']
@@ -110,17 +115,20 @@ def calculate_money_line(df):
     df['Money_Line_Score'] = scores
     return df
 
-# FIX: Changed period to "6mo" to follow valid yfinance parameters
-@st.cache_data(ttl=3600)
+# ADVANCED FIX: Spoof a real browser configuration to bypass cloud bot firewalls
+@st.cache_data(ttl=600)
 def fetch_data(ticker):
     try:
-        ticker_obj = yf.Ticker(ticker)
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        })
+        ticker_obj = yf.Ticker(ticker, session=session)
         df = ticker_obj.history(period="6mo", interval="1d", progress=False)
-        if df.empty:
-            return None
         return df
-    except:
-        return None
+    except Exception as e:
+        # Pass the raw structural exception backward to display natively
+        return e
 
 # ==========================================
 # DASHBOARD EXECUTION
@@ -134,11 +142,19 @@ cols = st.columns(3)
 col_idx = 0
 
 for ticker in watchlist:
-    df = fetch_data(ticker)
-    if df is None or len(df) < 25:
-        st.warning(f"Could not load sufficient historical data for {ticker}")
+    result = fetch_data(ticker)
+    
+    # Diagnostic Check: If the request raised an error, show it clearly on screen
+    if isinstance(result, Exception):
+        st.error(f"⚠️ Yahoo Connection Error for {ticker}: {str(result)}")
         continue
         
+    if result is None or result.empty or len(result) < 25:
+        st.warning(f"Could not load sufficient historical data for {ticker}. (Data came back empty)")
+        continue
+        
+    # Isolate data safely 
+    df = result.copy()
     df = calculate_money_line(df)
     
     prev_score = int(df['Money_Line_Score'].iloc[-3])
