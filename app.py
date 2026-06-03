@@ -112,3 +112,88 @@ def calculate_money_line(df):
         scores.append(score)
         
     df['Money_Line_Score'] = scores
+    return df
+
+# FIX: Removed the invalid 'progress' argument from history()
+@st.cache_data(ttl=600)
+def fetch_data(ticker):
+    try:
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        })
+        ticker_obj = yf.Ticker(ticker, session=session)
+        df = ticker_obj.history(period="6mo", interval="1d")
+        return df
+    except Exception as e:
+        return e
+
+# ==========================================
+# DASHBOARD EXECUTION
+# ==========================================
+if st.sidebar.button("🔄 Force Refresh Scanner"):
+    st.cache_data.clear()
+
+st.subheader(f"System Snapshot — {datetime.now().strftime('%Y-%m-%d %H:%M')} GMT")
+
+cols = st.columns(3)
+col_idx = 0
+
+for ticker in watchlist:
+    result = fetch_data(ticker)
+    
+    if isinstance(result, Exception):
+        st.error(f"⚠️ Yahoo Connection Error for {ticker}: {str(result)}")
+        continue
+        
+    if result is None or result.empty or len(result) < 25:
+        st.warning(f"Could not load sufficient historical data for {ticker}. (Data came back empty)")
+        continue
+        
+    df = result.copy()
+    df = calculate_money_line(df)
+    
+    prev_score = int(df['Money_Line_Score'].iloc[-3])
+    curr_score = int(df['Money_Line_Score'].iloc[-2])
+    last_price = float(df['Close'].iloc[-2])
+    rsi_val = float(df['RSI'].iloc[-2])
+    
+    if curr_score >= bullish_thresh and prev_score < bullish_thresh:
+        status_text = "🟢 BULLISH FLIP"
+        card_bg = "#d4edda"
+        text_color = "#155724"
+    elif curr_score <= bearish_thresh and prev_score > bearish_thresh:
+        status_text = "🔴 BEARISH FLIP"
+        card_bg = "#f8d7da"
+        text_color = "#721c24"
+    elif curr_score >= bullish_thresh:
+        status_text = "Sustained Bullish State"
+        card_bg = "#e2f0d9"
+        text_color = "#2e7d32"
+    elif curr_score <= bearish_thresh:
+        status_text = "Sustained Bearish State"
+        card_bg = "#fce4d6"
+        text_color = "#c65911"
+    else:
+        status_text = "Neutral / Low Conviction"
+        card_bg = "#f8f9fa"
+        text_color = "#6c757d"
+
+    with cols[col_idx % 3]:
+        st.markdown(
+            f"""
+            <div style="background-color: {card_bg}; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ddd;">
+                <h3 style="margin: 0; color: #333;">{ticker}</h3>
+                <p style="margin: 5px 0; font-size: 1.2em; font-weight: bold; color: {text_color};">{status_text}</p>
+                <hr style="margin: 10px 0; border: 0; border-top: 1px solid #ccc;">
+                <table style="width:100%; font-size: 0.9em; color: #333;">
+                    <tr><td><b>Close Price:</b></td><td style="text-align:right;">${last_price:,.2f}</td></tr>
+                    <tr><td><b>Current Score:</b></td><td style="text-align:right; font-weight:bold;">{curr_score}</td></tr>
+                    <tr><td><b>Previous Score:</b></td><td style="text-align:right;">{prev_score}</td></tr>
+                    <tr><td><b>RSI (14d):</b></td><td style="text-align:right;">{rsi_val:.1f}</td></tr>
+                </table>
+            </div>
+            """, 
+            unsafe_allowed_html=True
+        )
+    col_idx += 1
