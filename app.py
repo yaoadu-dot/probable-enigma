@@ -33,7 +33,6 @@ watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 # NATIVE MATHEMATICAL INDICATOR ENGINES
 # ==========================================
 def calculate_money_line(df):
-    # Ensure columns are safe standard series
     close_ser = df['Close']
     high_ser = df['High']
     low_ser = df['Low']
@@ -48,7 +47,7 @@ def calculate_money_line(df):
     loss = -delta.clip(upper=0)
     ema_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     ema_loss = loss.ewm(alpha=1/14, adjust=False).mean()
-    rs = ema_gain / (ema_loss + 1e-10) # Prevent division by zero
+    rs = ema_gain / (ema_loss + 1e-10)
     df['RSI'] = 100 - (100 / (1 + rs))
 
     # 3. MACD (12, 26, 9)
@@ -72,10 +71,10 @@ def calculate_money_line(df):
     upperband = hl2 + (3.0 * atr)
     lowerband = hl2 - (3.0 * atr)
     
-    # Convert to arrays for lookback looping execution
-    cl_arr = close_ser.values
-    ub_arr = upperband.values
-    lb_arr = lowerband.values
+    # CRITICAL FIX: Use .to_numpy().copy() to make arrays explicitly writable
+    cl_arr = close_ser.to_numpy().copy()
+    ub_arr = upperband.to_numpy().copy()
+    lb_arr = lowerband.to_numpy().copy()
     dir_arr = np.ones(len(df))
     
     for i in range(1, len(df)):
@@ -92,9 +91,7 @@ def calculate_money_line(df):
                 
     df['SuperTrend_Dir'] = dir_arr
 
-    # ==========================================
-    # CONFLUENCE SCORING LOOP
-    # ==========================================
+    # Confluence Scoring Loop
     scores = []
     for i in range(len(df)):
         if pd.isna(df['EMA_20'].iloc[i]) or pd.isna(df['RSI'].iloc[i]) or pd.isna(df['SuperTrend_Dir'].iloc[i]):
@@ -102,15 +99,10 @@ def calculate_money_line(df):
             continue
             
         score = 0
-        # Condition 1: SuperTrend Direction
         score += 1 if df['SuperTrend_Dir'].iloc[i] == 1 else -1
-        # Condition 2: Price vs Core Trend Filter
         score += 1 if cl_arr[i] > df['EMA_20'].iloc[i] else -1
-        # Condition 3: RSI Momentum Zone
         score += 1 if df['RSI'].iloc[i] > 50 else -1
-        # Condition 4: MACD Acceleration
         score += 1 if df['MACD_Hist'].iloc[i] > 0 else -1
-        # Condition 5: Volume Breakout Confluence
         if vol_ser.iloc[i] > df['Vol_SMA20'].iloc[i]:
             score += 1 if cl_arr[i] > df['EMA_20'].iloc[i] else -1
             
@@ -119,14 +111,14 @@ def calculate_money_line(df):
     df['Money_Line_Score'] = scores
     return df
 
+# CRITICAL FIX: Switched to yf.Ticker().history for bulletproof data formatting
 @st.cache_data(ttl=3600)
 def fetch_data(ticker):
     try:
-        df = yf.download(ticker, period="100d", interval="1d", progress=False)
+        ticker_obj = yf.Ticker(ticker)
+        df = ticker_obj.history(period="100d", interval="1d", progress=False)
         if df.empty:
             return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
         return df
     except:
         return None
