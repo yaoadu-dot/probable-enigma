@@ -114,7 +114,6 @@ def calculate_money_line(df):
     df['Money_Line_Score'] = scores
     return df
 
-# FIX: Removed the invalid 'progress' argument from history()
 @st.cache_data(ttl=600)
 def fetch_data(ticker):
     try:
@@ -180,6 +179,7 @@ for ticker in watchlist:
         text_color = "#6c757d"
 
     with cols[col_idx % 3]:
+        # FIXED: Changed argument parameter name to unsafe_allow_html
         st.markdown(
             f"""
             <div style="background-color: {card_bg}; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ddd;">
@@ -194,6 +194,6 @@ for ticker in watchlist:
                 </table>
             </div>
             """, 
-            unsafe_allowed_html=True
+            unsafe_allow_html=True
         )
     col_idx += 1
