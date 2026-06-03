@@ -26,7 +26,7 @@ st.sidebar.header("Scanner Settings")
 bullish_thresh = st.sidebar.slider("Bullish Threshold (Bright Green)", 1, 5, 3)
 bearish_thresh = st.sidebar.slider("Bearish Threshold (Bright Red)", -5, -1, -3)
 
-default_tickers = "BTC-USD, SOL-USD, SUI-USD, AAPL, NVDA"
+default_tickers = "BTC-USD, SOL-USD, HYPE-USD, ZEC-USD, XRP-USD, BNB-USD, MSFT, GOOGL, TTWO, QUBT, PLUG, XMR-USD, DASH-USD, VVV, LINK-USD, NEAR-USD, TON1-USD"
 ticker_input = st.sidebar.text_area("Watchlist Tickers (comma separated)", default_tickers)
 watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
