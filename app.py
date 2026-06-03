@@ -71,7 +71,6 @@ def calculate_money_line(df):
     upperband = hl2 + (3.0 * atr)
     lowerband = hl2 - (3.0 * atr)
     
-    # CRITICAL FIX: Use .to_numpy().copy() to make arrays explicitly writable
     cl_arr = close_ser.to_numpy().copy()
     ub_arr = upperband.to_numpy().copy()
     lb_arr = lowerband.to_numpy().copy()
@@ -111,12 +110,12 @@ def calculate_money_line(df):
     df['Money_Line_Score'] = scores
     return df
 
-# CRITICAL FIX: Switched to yf.Ticker().history for bulletproof data formatting
+# FIX: Changed period to "6mo" to follow valid yfinance parameters
 @st.cache_data(ttl=3600)
 def fetch_data(ticker):
     try:
         ticker_obj = yf.Ticker(ticker)
-        df = ticker_obj.history(period="100d", interval="1d", progress=False)
+        df = ticker_obj.history(period="6mo", interval="1d", progress=False)
         if df.empty:
             return None
         return df
