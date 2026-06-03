@@ -23,10 +23,11 @@ st.markdown("Track trend flips and structural momentum confluences in real-time.
 # ==========================================
 st.sidebar.header("Scanner Settings")
 
-bullish_thresh = st.sidebar.slider("Bullish Threshold (Bright Green)", 1, 5, 3)
-bearish_thresh = st.sidebar.slider("Bearish Threshold (Bright Red)", -5, -1, -3)
+# Expanded sliders to 6 to account for the new ADX score weight
+bullish_thresh = st.sidebar.slider("Bullish Threshold (Bright Green)", 1, 6, 4)
+bearish_thresh = st.sidebar.slider("Bearish Threshold (Bright Red)", -6, -1, -4)
 
-default_tickers = "BTC-USD, SOL-USD, HYPE-USD, ZEC-USD, XRP-USD, BNB-USD, MSFT, GOOGL, TTWO, QUBT, PLUG, XMR-USD, DASH-USD, VVV, LINK-USD, NEAR-USD"
+default_tickers = "BTC-USD, SOL-USD, ZEC-USD, XRP-USD, BNB-USD, MSFT, GOOGL, TTWO, QUBT, PLUG, XMR-USD, DASH-USD, VVV, LINK-USD, NEAR-USD"
 ticker_input = st.sidebar.text_area("Watchlist Tickers (comma separated)", default_tickers)
 watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
@@ -94,10 +95,29 @@ def calculate_money_line(df):
                 
     df['SuperTrend_Dir'] = dir_arr
 
-    # Confluence Scoring Loop
+    # 6. Native ADX 14 Engine
+    upmove = high_ser.diff()
+    downmove = -low_ser.diff()
+    
+    plus_dm = pd.Series(np.where((upmove > downmove) & (upmove > 0), upmove, 0), index=df.index)
+    minus_dm = pd.Series(np.where((downmove > upmove) & (downmove > 0), downmove, 0), index=df.index)
+    
+    alpha_14 = 1 / 14
+    smoothed_tr = tr.ewm(alpha=alpha_14, adjust=False).mean()
+    smoothed_plus_dm = plus_dm.ewm(alpha=alpha_14, adjust=False).mean()
+    smoothed_minus_dm = minus_dm.ewm(alpha=alpha_14, adjust=False).mean()
+    
+    plus_di = 100 * smoothed_plus_dm / (smoothed_tr + 1e-10)
+    minus_di = 100 * smoothed_minus_dm / (smoothed_tr + 1e-10)
+    
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di + 1e-10)
+    df['ADX'] = dx.ewm(alpha=alpha_14, adjust=False).mean()
+
+    # Confluence Scoring Loop (Max: +6, Min: -6)
     scores = []
     for i in range(len(df)):
-        if pd.isna(df['EMA_20'].iloc[i]) or pd.isna(df['RSI'].iloc[i]) or pd.isna(df['SuperTrend_Dir'].iloc[i]):
+        if (pd.isna(df['EMA_20'].iloc[i]) or pd.isna(df['RSI'].iloc[i]) or 
+            pd.isna(df['SuperTrend_Dir'].iloc[i]) or pd.isna(df['ADX'].iloc[i])):
             scores.append(0)
             continue
             
@@ -106,7 +126,12 @@ def calculate_money_line(df):
         score += 1 if cl_arr[i] > df['EMA_20'].iloc[i] else -1
         score += 1 if df['RSI'].iloc[i] > 50 else -1
         score += 1 if df['MACD_Hist'].iloc[i] > 0 else -1
+        
         if vol_ser.iloc[i] > df['Vol_SMA20'].iloc[i]:
+            score += 1 if cl_arr[i] > df['EMA_20'].iloc[i] else -1
+            
+        # ADX Confluence Filter: Turbocharges score if trend strength is high (> 25)
+        if df['ADX'].iloc[i] > 25:
             score += 1 if cl_arr[i] > df['EMA_20'].iloc[i] else -1
             
         scores.append(score)
@@ -156,6 +181,7 @@ for ticker in watchlist:
     curr_score = int(df['Money_Line_Score'].iloc[-2])
     last_price = float(df['Close'].iloc[-2])
     rsi_val = float(df['RSI'].iloc[-2])
+    adx_val = float(df['ADX'].iloc[-2])
     
     if curr_score >= bullish_thresh and prev_score < bullish_thresh:
         status_text = "🟢 BULLISH FLIP"
@@ -179,7 +205,6 @@ for ticker in watchlist:
         text_color = "#6c757d"
 
     with cols[col_idx % 3]:
-        # FIXED: Changed argument parameter name to unsafe_allow_html
         st.markdown(
             f"""
             <div style="background-color: {card_bg}; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ddd;">
@@ -191,6 +216,7 @@ for ticker in watchlist:
                     <tr><td><b>Current Score:</b></td><td style="text-align:right; font-weight:bold;">{curr_score}</td></tr>
                     <tr><td><b>Previous Score:</b></td><td style="text-align:right;">{prev_score}</td></tr>
                     <tr><td><b>RSI (14d):</b></td><td style="text-align:right;">{rsi_val:.1f}</td></tr>
+                    <tr><td><b>ADX (14d):</b></td><td style="text-align:right; font-weight:bold;">{adx_val:.1f}</td></tr>
                 </table>
             </div>
             """, 
