@@ -14,22 +14,22 @@ st.set_page_config(
 st.title("🛡️ Alpha Engine: Premium Momentum Scanner")
 st.markdown("Multi-asset quantitative confluence tracking dashboard.")
 
-# Premium Theme UI Styles
+# Improved Theme Styles (Ensures metric text automatically scales with light/dark modes)
 st.markdown("""
     <style>
         .block-container {padding-top: 1.5rem; padding-bottom: 1.5rem;}
         h1 {font-weight: 800; letter-spacing: -1px;}
         .stMetric {
-            background-color: #1e2230; 
+            background-color: rgba(128, 128, 128, 0.05); 
             padding: 15px; 
             border-radius: 10px; 
-            border: 1px solid #2e3440;
+            border: 1px solid rgba(128, 128, 128, 0.2);
         }
     </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 1. WATCHLIST DEFINITION
+# 1. WATCHLIST DEFINITION & STATE PERSISTENCE
 # ==============================================================================
 default_tickers = [
     "MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", 
@@ -42,6 +42,10 @@ default_tickers = [
     "CL=F", "BZ=F", "HG=F", "LIT", "GLTR", "PALL", "REMX", "SIL", "BOTZ", "IGV", 
     "AIQU", "REXC"
 ]
+
+# Initialize Session State tracking for the ticker text asset block to make them permanent
+if "persisted_tickers" not in st.session_state:
+    st.session_state["persisted_tickers"] = ", ".join(default_tickers)
 
 # ==============================================================================
 # 2. SIDEBAR INTERACTIVE FILTERS (-6 to +6 Slider Scale)
@@ -64,11 +68,16 @@ else:
     min_score, max_score = score_selection, score_selection
 
 with st.sidebar.expander("📝 Edit Watchlist Assets", expanded=False):
+    # Text area updates state directly on user input change
     t_input = st.sidebar.text_area(
         "Tickers (Comma Separated)", 
-        ", ".join(default_tickers), 
+        value=st.session_state["persisted_tickers"], 
+        key="ticker_input_field",
         height=250
     )
+    # Save input values permanently back into the active session state
+    st.session_state["persisted_tickers"] = t_input
+
 watchlist = [t.strip().upper() for t in t_input.split(",") if t.strip()]
 
 lookback = st.sidebar.selectbox(
@@ -221,12 +230,11 @@ processed, failed = fetch_and_build_matrix(tuple(watchlist), lookback)
 if processed:
     df_raw = pd.DataFrame(processed)
     
-    # FIXED: Split multi-conditional filter into isolated short lines to prevent paste truncations
     cond_min = df_raw['Score'] >= min_score
     cond_max = df_raw['Score'] <= max_score
     df_final = df_raw[cond_min & cond_max].sort_values("Score", ascending=False)
     
-    # Summary Card Grid Layer
+    # Summary Card Grid Layer (Uses the newly fixed styling layer for complete readability)
     c_m1, c_m2, c_m3, c_m4 = st.columns(4)
     with c_m1: st.metric("Total Online Assets", len(df_raw))
     with c_m2: st.metric("Matches Filter View", len(df_final))
@@ -251,7 +259,6 @@ if processed:
         with col_left:
             st.markdown("#### 🔥 Structural Momentum (+6 Max Score & ADX ≥ 25)")
             
-            # FIXED: Line split for breakout tracking
             c_break_score = df_final['Score'] == 6
             c_break_adx = df_final['ADX'] >= 25
             breakouts = df_final[c_break_score & c_break_adx]
@@ -265,7 +272,6 @@ if processed:
         with col_right:
             st.markdown("#### 💤 Range Traps (+6 Max Score but ADX < 15)")
             
-            # FIXED: Line split to completely prevent line 228 truncation crashes
             c_trap_score = df_final['Score'] == 6
             c_trap_adx = df_final['ADX'] < 15
             traps = df_final[c_trap_score & c_trap_adx]
