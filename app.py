@@ -27,7 +27,40 @@ st.sidebar.header("Scanner Settings")
 bullish_thresh = st.sidebar.slider("Bullish Threshold (Bright Green)", 1, 6, 4)
 bearish_thresh = st.sidebar.slider("Bearish Threshold (Bright Red)", -6, -1, -4)
 
-default_tickers = "BTC-USD, SOL-USD, ZEC-USD, XRP-USD, BNB-USD, MSFT, GOOGL, TTWO, QUBT, PLUG, XMR-USD, DASH-USD, VVV, LINK-USD, NEAR-USD"
+# ==============================================================================
+# MASTER WATCHLIST CONFIGURATION
+# ==============================================================================
+DEFAULT_TICKERS = [
+    # --- TECH, AI & QUANTUM EQUITIES ---
+    "MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", 
+    "CLSK", "WULF", "QUBT", "CORZ", "NBIS", "BE", "TSM", "CBRS", "HUT", "TTWO", 
+    "CAT", "MU", "META", "TSLA", "AVGO", "MSFT", "GOOGL", "AAPL", "AMZN", "HON", 
+    "NVDA", "ORCL", "CRM", "PLTR", "VVV", "MET", "RARE",
+
+    # --- MAJOR & MID-CAP CRYPTOCURRENCIES ---
+    "BTC-USD", "ETH-USD", "BNB-USD", "ZEC-USD", "XMR-USD", "SOL-USD", "QNT-USD", 
+    "LTC-USD", "DASH-USD", "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", "TON-USD", 
+    "XRP-USD", "SUI-USD", "AKT-USD", "RAY-USD", "WLD-USD", "ONDO-USD", "TRX-USD", 
+    "XLM-USD", "DOGE-USD", "POL-USD", "JUP-USD",
+
+    # --- SPECULATIVE CRYPTO & MEME TOKENS ---
+    "WIF-USD", "BONK-USD", "SHIB-USD", "PEPE-USD", "HYPE-USD", "DEEP-USD", 
+    "BLUEF-USD", "PUMP-USD", "FARTCOIN-USD", "ALCH-USD", "ARC-USD", "PNUT-USD", 
+    "USELESS-USD", "PENGU-USD", "UFD-USD", "SPX6900-USD",
+
+    # --- GLOBAL COMMODITIES (Futures & Tracking ETFs) ---
+    "GC=F",      # Gold Futures (Optimized from XAU-USD)
+    "SI=F",      # Silver Futures (Optimized from SILVER-USD)
+    "PL=F",      # Platinum Futures (Optimized from PLATINUM-USD)
+    "PA=F",      # Palladium Futures (Optimized from PALLADIUM-USD)
+    "CL=F",      # Crude Oil WTI Futures (Optimized from WTI-USD)
+    "BZ=F",      # Brent Crude Futures (Optimized from UKOIL-USD)
+    "HG=F",      # Copper Futures (Optimized from COPPER-USD)
+    "LIT",       # Lithium ETF (Optimized from LITHIUM-USD)
+
+    # --- THEMATIC & SECTOR ETFs ---
+    "GLTR", "PALL", "REMX", "SIL", "BOTZ", "IGV", "AIQU", "REXC"
+]
 ticker_input = st.sidebar.text_area("Watchlist Tickers (comma separated)", default_tickers)
 watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
