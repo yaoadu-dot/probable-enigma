@@ -42,7 +42,7 @@ default_tickers = [
 # ==============================================================================
 st.sidebar.header("Scanner Controls")
 
-# Fix: Convert Python list into a clean, comma-separated string for Streamlit text area
+# Convert Python list into a clean, comma-separated string for Streamlit text area
 default_tickers_string = ", ".join(default_tickers)
 ticker_input = st.sidebar.text_area("Watchlist Tickers (comma separated)", default_tickers_string, height=250)
 
@@ -165,6 +165,7 @@ with st.spinner(f"Scanning {len(watchlist)} global assets across markets..."):
             current_score, previous_score = compute_confluence_score(hist)
             last_row = hist.iloc[-1]
             
+            # FIXED: Correctly matching the closing curly brace for the dictionary payload
             processed_data.append({
                 "Asset": ticker,
                 "Current Score": current_score,
@@ -173,9 +174,9 @@ with st.spinner(f"Scanning {len(watchlist)} global assets across markets..."):
                 "RSI (14d)": round(last_row['RSI'], 1),
                 "ADX (14d)": round(last_row['ADX'], 1),
                 "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
-            )
+            })
         except Exception:
-            continue # Seamlessly bypass errors or specific asset latency issues
+            continue 
 
 # ==============================================================================
 # 6. MODERN DASHBOARD VISUALIZATION
