@@ -151,13 +151,11 @@ session.headers.update({
 
 with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
     try:
-        # CRITICAL FIX: Utilizing group_by='ticker' to insulate structural integrity
         batch_data = yf.download(watchlist, period=lookback_period, session=session, group_by='ticker', progress=False)
         
         if batch_data.empty:
             st.error("The network stream returned completely empty. Yahoo Finance is entirely blocking this cloud instance.")
         else:
-            # Safely read top-level MultiIndex tickers
             if isinstance(batch_data.columns, pd.MultiIndex):
                 available_tickers = batch_data.columns.get_level_values(0).unique()
             else:
@@ -180,7 +178,6 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
                         failed_assets.append({"Asset": ticker, "Reason": f"Empty or insufficient history ({len(hist)} rows)"})
                         continue
                         
-                    # Calculate tracking configurations
                     hist = calculate_indicators(hist)
                     if hist is None:
                         failed_assets.append({"Asset": ticker, "Reason": "Indicator processing engine returned None"})
@@ -209,12 +206,9 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
 # ==============================================================================
 if processed_data:
     scan_df = pd.DataFrame(processed_data)
-    
-    # Sort layout by strongest momentum score ranking
     scan_df['Score Delta'] = scan_df['Current Score'] - scan_df['Previous Score']
     scan_df = scan_df.sort_values(by="Current Score", ascending=False)
     
-    # Main Metrics Grid
     st.markdown("### 📊 Active Market Watchlist")
     st.dataframe(
         scan_df[["Asset", "Current Score", "Previous Score", "Price", "RSI (14d)", "ADX (14d)", "Trend Status"]],
@@ -222,34 +216,5 @@ if processed_data:
         hide_index=True
     )
     
-    # Instant High-Priority Alert Tiers
     st.markdown("---")
-    st.markdown("### 🎯 Scanner Alerts: High-Conviction Structural Breakouts")
-    
-    high_conviction = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] >= 25.0)]
-    fake_outs = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] < 15.0)]
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### 🚀 Validated Structural Breakouts (ADX ≥ 25)")
-        if not high_conviction.empty:
-            for _, asset_row in high_conviction.iterrows():
-                st.success(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
-        else:
-            st.info("No high-conviction breakout trends detected in this cycle.")
-            
-    with col2:
-        st.markdown("#### ⚠️ Low-Velocity Range Grinds (ADX < 15)")
-        if not fake_outs.empty:
-            for _, asset_row in fake_outs.iterrows():
-                st.warning(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
-        else:
-            st.info("No low-velocity range traps detected.")
-
-# Explicit Main-Screen Diagnostic Panel (Only runs if data grid fails to render)
-else:
-    st.error("🚨 Critical Failure: Data stream arrived, but no assets could be parsed into the dashboard.")
-    if failed_assets:
-        st.markdown("### 🔍 Engine Diagnostic Logs")
-        st.markdown("The system successfully pinged the data provider, but individual assets were dropped for the reasons detailed below:")
-        st.
+    st.markdown("### 🎯 Scanner Alerts: High-Conviction Structural Break
