@@ -30,7 +30,7 @@ bearish_thresh = st.sidebar.slider("Bearish Threshold (Bright Red)", -6, -1, -4)
 # ==============================================================================
 # MASTER WATCHLIST CONFIGURATION
 # ==============================================================================
-DEFAULT_TICKERS = [
+default_tickers = [
     # --- TECH, AI & QUANTUM EQUITIES ---
     "MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", 
     "CLSK", "WULF", "QUBT", "CORZ", "NBIS", "BE", "TSM", "CBRS", "HUT", "TTWO", 
@@ -49,14 +49,14 @@ DEFAULT_TICKERS = [
     "USELESS-USD", "PENGU-USD", "UFD-USD", "SPX6900-USD",
 
     # --- GLOBAL COMMODITIES (Futures & Tracking ETFs) ---
-    "GC=F",      # Gold Futures (Optimized from XAU-USD)
-    "SI=F",      # Silver Futures (Optimized from SILVER-USD)
-    "PL=F",      # Platinum Futures (Optimized from PLATINUM-USD)
-    "PA=F",      # Palladium Futures (Optimized from PALLADIUM-USD)
-    "CL=F",      # Crude Oil WTI Futures (Optimized from WTI-USD)
-    "BZ=F",      # Brent Crude Futures (Optimized from UKOIL-USD)
-    "HG=F",      # Copper Futures (Optimized from COPPER-USD)
-    "LIT",       # Lithium ETF (Optimized from LITHIUM-USD)
+    "GC=F",      # Gold Futures 
+    "SI=F",      # Silver Futures 
+    "PL=F",      # Platinum Futures 
+    "PA=F",      # Palladium Futures 
+    "CL=F",      # Crude Oil WTI Futures 
+    "BZ=F",      # Brent Crude Futures 
+    "HG=F",      # Copper Futures 
+    "LIT",       # Lithium ETF 
 
     # --- THEMATIC & SECTOR ETFs ---
     "GLTR", "PALL", "REMX", "SIL", "BOTZ", "IGV", "AIQU", "REXC"
