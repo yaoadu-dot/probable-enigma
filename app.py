@@ -52,12 +52,10 @@ if "persisted_tickers" not in st.session_state:
 # ==============================================================================
 st.sidebar.header("🎛️ Control Panel")
 
-# Force Cache Clear Action Button
 if st.sidebar.button("🔄 Force Hard Reload", use_container_width=True):
     st.cache_data.clear()
     st.toast("Data matrix cache purged! Fetching live stream...")
 
-# Confluence filter slider scaled exactly from -6 to +6
 score_selection = st.sidebar.slider(
     "Filter Confluence Score", 
     min_value=-6, 
@@ -140,74 +138,3 @@ def process_state_and_score(df):
         (1 if r['Close'] > r['EMA20'] else -1) + \
         (1 if r['Close'] > r['EMA50'] else -1) + \
         (1 if r['RSI'] > 50 else -1) + \
-        (1 if r['MACD_Hist'] > 0 else -1) + \
-        (1 if r['+DI'] > r['-DI'] else -1)
-        
-    if r['ADX'] < 15:
-        status = "⚪ Neutral"
-    elif r['Close'] > r['EMA20'] and p['Close'] <= p['EMA20']:
-        status = "🚀 Bullish Flip"
-    elif r['Close'] < r['EMA20'] and p['Close'] >= p['EMA20']:
-        status = "🩸 Bearish Flip"
-    elif r['Close'] > r['EMA20']:
-        status = "🟢 Bullish"
-    else:
-        status = "🔴 Bearish"
-        
-    return s, status
-
-# ==============================================================================
-# 4. HIGH-AVAILABILITY CACHED NETWORK DATA PIPELINE
-# ==============================================================================
-@st.cache_data(ttl=600)
-def fetch_and_build_matrix(tickers_tuple, selected_lookback):
-    processed_nodes, failed_nodes = [], []
-    
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    })
-    
-    tickers_list = list(tickers_tuple)
-    
-    try:
-        data = yf.download(
-            tickers_list, 
-            period=selected_lookback, 
-            session=session, 
-            group_by='ticker', 
-            progress=False, 
-            timeout=15
-        )
-        
-        if data.empty:
-            return processed_nodes, [{"Asset": "ALL", "Reason": "Empty stream frame."}], datetime.datetime.now()
-            
-        if isinstance(data.columns, pd.MultiIndex):
-            valid_tickers = data.columns.get_level_values(0).unique()
-        else:
-            valid_tickers = [tickers_list] if 'Close' in data.columns else []
-
-        for t in tickers_list:
-            if t not in valid_tickers:
-                failed_nodes.append({"Asset": t, "Reason": "Omitted from layout"})
-                continue
-            try:
-                h = data[t].copy() if isinstance(data.columns, pd.MultiIndex) else data.copy()
-                h = h.dropna(subset=['Close'])
-                
-                if len(h) < 55:
-                    failed_nodes.append({"Asset": t, "Reason": f"Insufficient history ({len(h)} bars)"})
-                    continue
-                    
-                h = calculate_indicators(h)
-                if h is not None:
-                    score, status = process_state_and_score(h)
-                    processed_nodes.append({
-                        "Asset": t, "Score": score, "Status": status,
-                        "Price": round(h.iloc[-1]['Close'], 4),
-                        "RSI": round(h.iloc[-1]['RSI'], 1), "ADX": round(h.iloc[-1]['ADX'], 1)
-                    })
-                else:
-                    failed_nodes.append({"Asset": t, "Reason": "Math logic failure"})
-            except Exception as inner_ex:
