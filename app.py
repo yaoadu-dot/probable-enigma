@@ -40,7 +40,13 @@ default_tickers = [
 st.sidebar.header("🎛️ Control Panel")
 
 # Confluence filter slider scaled exactly from -6 to +6
-score_range = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
+score_selection = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
+
+# FIXED: Explicitly handle state transitions if Streamlit temporarily reads this as an int instead of a tuple
+if isinstance(score_selection, tuple):
+    min_score, max_score = score_selection
+else:
+    min_score, max_score = score_selection, score_selection
 
 with st.sidebar.expander("📝 Edit Watchlist Assets", expanded=False):
     t_input = st.sidebar.text_area("Tickers (Comma Separated)", ", ".join(default_tickers), height=250)
@@ -183,8 +189,8 @@ processed, failed = fetch_and_build_matrix(tuple(watchlist), lookback)
 if processed:
     df_raw = pd.DataFrame(processed)
     
-    # Dynamic in-memory sorting filtered instantly via the slider parameters
-    df_final = df_raw[(df_raw['Score'] >= score_range) & (df_raw['Score'] <= score_range)].sort_values("Score", ascending=False)
+    # FIXED: Uses the unpacked safe variables to completely prevent evaluation crashes
+    df_final = df_raw[(df_raw['Score'] >= min_score) & (df_raw['Score'] <= max_score)].sort_values("Score", ascending=False)
     
     # Summary Card Grid Layer
     c_m1, c_m2, c_m3, c_m4 = st.columns(4)
@@ -219,21 +225,4 @@ if processed:
                 
         with col_right:
             st.markdown("#### 💤 Range Traps (+6 Max Score but ADX < 15)")
-            traps = df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 15)]
-            if not traps.empty:
-                for _, row in traps.iterrows():
-                    st.warning(f"**{row['Asset']}** | Price: {row['Price']} | ADX: {row['ADX']} | Status: {row['Status']}")
-            else:
-                st.info("No compressed range compression traps captured.")
-
-    with tab3:
-        st.markdown("### Matrix Performance Logs")
-        if failed:
-            st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
-        else:
-            st.success("All systems green. Zero processing faults reported.")
-else:
-    st.error("🚨 System Cache Notice: Data matrix is processing or endpoint traffic is throttling connection frames.")
-    if failed:
-        st.markdown("### 🔍 Engine Diagnostic Debug Logs")
-        st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
+            traps = df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 1
