@@ -78,5 +78,9 @@ if proc:
         l, r = st.columns(2)
         l.markdown("#### 🔥 Structural Momentum"); [l.success(f"{row['Asset']} | {row['Price']} | ADX:{row['ADX']}") for _, row in df_f[(df_f['Score']==6)&(df_f['ADX']>=25)].iterrows()] or l.info("None")
         r.markdown("#### 💤 Range Traps"); [r.warning(f"{row['Asset']} | {row['Price']} | ADX:{row['ADX']}") for _, row in df_f[(df_f['Score']==6)&(df_f['ADX']<15)].iterrows()] or r.info("None")
-    with t3: st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True) if failed else st.success("Green")
+    with t3:
+        if failed:
+            st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
+        else:
+            st.success("All systems green.")
 else: st.error("Processing...")
