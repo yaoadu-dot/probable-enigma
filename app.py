@@ -11,7 +11,7 @@ st.title("🛡️ Alpha Engine: Multi-Asset Momentum Scanner")
 st.markdown("Real-time Game Theory & Technical Confluence Tracking dashboard.")
 
 # ==============================================================================
-# 1. PURIFIED MASTER WATCHLIST (VERIFIED YFINANCE TICKERS ONLY)
+# 1. PURIFIED MASTER WATCHLIST (OMITTED DELISTED/BUGGY CRYPTO PAIRS)
 # ==============================================================================
 default_tickers = [
     # --- TECH, AI & QUANTUM EQUITIES ---
@@ -20,11 +20,10 @@ default_tickers = [
     "CAT", "MU", "META", "TSLA", "AVGO", "MSFT", "GOOGL", "AAPL", "AMZN", "HON", 
     "NVDA", "ORCL", "CRM", "PLTR", "VVV", "MET", "RARE",
 
-    # --- VERIFIED LARGE & MID-CAP CRYPTOCURRENCIES ---
+    # --- HIGH-LIQUIDITY VERIFIED CRYPTOCURRENCIES ---
     "BTC-USD", "ETH-USD", "BNB-USD", "ZEC-USD", "XMR-USD", "SOL-USD", "QNT-USD", 
     "LTC-USD", "DASH-USD", "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", 
-    "XRP-USD", "SUI-USD", "AKT-USD", "RAY-USD", "WLD-USD", "ONDO-USD", "TRX-USD", 
-    "XLM-USD", "DOGE-USD", "POL-USD", "JUP-USD", "WIF-USD", "BONK-USD", "SHIB-USD", "PEPE-USD",
+    "XRP-USD", "XLM-USD", "DOGE-USD", "JUP-USD", "WIF-USD", "BONK-USD", "SHIB-USD",
 
     # --- GLOBAL COMMODITIES ---
     "GC=F", "SI=F", "PL=F", "PA=F", "CL=F", "BZ=F", "HG=F", "LIT",
@@ -138,12 +137,11 @@ def compute_confluence_score(df):
     return calculate_single_score(row), calculate_single_score(prev_row)
 
 # ==============================================================================
-# 5. ROBUST COLUMN-GROUPED BATCH ENGINE
+# 5. ROBUST TICKER-ISOLATED BATCH ENGINE
 # ==============================================================================
 processed_data = []
 failed_assets = []
 
-# Spoof modern desktop browser session headers
 session = requests.Session()
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
@@ -151,42 +149,41 @@ session.headers.update({
     'Accept-Language': 'en-US,en;q=0.5',
 })
 
-with st.spinner(f"Requesting secure matrix data stream for {len(watchlist)} tickers..."):
+with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
     try:
-        # Download utilizing standard structure layout (gracefully isolates missing/invalid assets)
-        batch_data = yf.download(watchlist, period=lookback_period, session=session, progress=False)
+        # CRITICAL FIX: Utilizing group_by='ticker' to insulate structural integrity
+        batch_data = yf.download(watchlist, period=lookback_period, session=session, group_by='ticker', progress=False)
         
         if batch_data.empty:
-            st.error("The network data stream returned empty. Yahoo's public endpoints are fully congested for this cloud location.")
+            st.error("The network stream returned completely empty. Yahoo Finance is entirely blocking this cloud instance.")
         else:
+            # Safely read top-level MultiIndex tickers
+            if isinstance(batch_data.columns, pd.MultiIndex):
+                available_tickers = batch_data.columns.get_level_values(0).unique()
+            else:
+                available_tickers = [watchlist] if len(watchlist) == 1 else []
+
             for ticker in watchlist:
-                try:
-                    # Safely piece together single asset dataframe out of the master column blocks
-                    if len(watchlist) == 1:
-                        hist = batch_data.copy()
-                    else:
-                        # Extract columns safely; if a ticker failed on YFinance, this handles it cleanly
-                        if ticker not in batch_data['Close'].columns:
-                            failed_assets.append((ticker, "Ticker completely omitted or unlisted on Yahoo Finance"))
-                            continue
-                        
-                        hist = pd.DataFrame({
-                            'Open': batch_data['Open'][ticker],
-                            'High': batch_data['High'][ticker],
-                            'Low': batch_data['Low'][ticker],
-                            'Close': batch_data['Close'][ticker],
-                            'Volume': batch_data['Volume'][ticker]
-                        })
+                if ticker not in available_tickers:
+                    failed_assets.append({"Asset": ticker, "Reason": "Completely skipped/dropped by Yahoo API"})
+                    continue
                     
+                try:
+                    if isinstance(batch_data.columns, pd.MultiIndex):
+                        hist = batch_data[ticker].copy()
+                    else:
+                        hist = batch_data.copy()
+                        
                     hist = hist.dropna(subset=['Close'])
                     
                     if hist.empty or len(hist) < 30:
-                        failed_assets.append((ticker, f"Insufficient historical tracking range ({len(hist)} days)"))
+                        failed_assets.append({"Asset": ticker, "Reason": f"Empty or insufficient history ({len(hist)} rows)"})
                         continue
                         
-                    # Calculate tracking indicator confluences
+                    # Calculate tracking configurations
                     hist = calculate_indicators(hist)
                     if hist is None:
+                        failed_assets.append({"Asset": ticker, "Reason": "Indicator processing engine returned None"})
                         continue
                         
                     current_score, previous_score = compute_confluence_score(hist)
@@ -202,16 +199,10 @@ with st.spinner(f"Requesting secure matrix data stream for {len(watchlist)} tick
                         "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
                     })
                 except Exception as parse_err:
-                    failed_assets.append((ticker, f"Data alignment skip: {str(parse_err)}"))
+                    failed_assets.append({"Asset": ticker, "Reason": f"Parsing exception: {str(parse_err)}"})
                     continue
     except Exception as general_err:
-        st.error(f"Core Batch Engine Fault: {str(general_err)}")
-
-# Render Engine Logging inside Sidebar for explicit asset isolation
-if failed_assets:
-    with st.sidebar.expander("⚠️ Engine Logs: Skipped Tickers"):
-        for t, reason in failed_assets:
-            st.write(f"**{t}**: {reason}")
+        st.error(f"Core Matrix Download Exception: {str(general_err)}")
 
 # ==============================================================================
 # 6. MODERN DASHBOARD VISUALIZATION
@@ -219,13 +210,12 @@ if failed_assets:
 if processed_data:
     scan_df = pd.DataFrame(processed_data)
     
-    # Sort dashboard layout by strongest momentum ranking
+    # Sort layout by strongest momentum score ranking
     scan_df['Score Delta'] = scan_df['Current Score'] - scan_df['Previous Score']
     scan_df = scan_df.sort_values(by="Current Score", ascending=False)
     
     # Main Metrics Grid
     st.markdown("### 📊 Active Market Watchlist")
-    
     st.dataframe(
         scan_df[["Asset", "Current Score", "Previous Score", "Price", "RSI (14d)", "ADX (14d)", "Trend Status"]],
         use_container_width=True,
@@ -240,7 +230,6 @@ if processed_data:
     fake_outs = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] < 15.0)]
     
     col1, col2 = st.columns(2)
-    
     with col1:
         st.markdown("#### 🚀 Validated Structural Breakouts (ADX ≥ 25)")
         if not high_conviction.empty:
@@ -256,5 +245,11 @@ if processed_data:
                 st.warning(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
         else:
             st.info("No low-velocity range traps detected.")
+
+# Explicit Main-Screen Diagnostic Panel (Only runs if data grid fails to render)
 else:
-    st.error("No active market assets could be parsed. The data provider connection timed out or blocked the cloud server node completely.")
+    st.error("🚨 Critical Failure: Data stream arrived, but no assets could be parsed into the dashboard.")
+    if failed_assets:
+        st.markdown("### 🔍 Engine Diagnostic Logs")
+        st.markdown("The system successfully pinged the data provider, but individual assets were dropped for the reasons detailed below:")
+        st.
