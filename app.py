@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 
 # Set modern, wide page layout
 st.set_page_config(page_title="Alpha Scanner Engine", layout="wide")
@@ -126,102 +127,4 @@ def calculate_indicators(df):
     
     return df
 
-# ==============================================================================
-# 4. CONFLUENCE SCORING SYSTEM (-4 to +4)
-# ==============================================================================
-def compute_confluence_score(df):
-    row = df.iloc[-1]
-    prev_row = df.iloc[-2] if len(df) > 1 else row
-    
-    def calculate_single_score(r):
-        s1 = 1 if r['Close'] > r['EMA20'] else -1
-        s2 = 1 if r['RSI'] > 50 else -1
-        s3 = 1 if r['MACD_Hist'] > 0 else -1
-        s4 = 1 if r['Trend'] == 1 else -1
-        return s1 + s2 + s3 + s4
-
-    return calculate_single_score(row), calculate_single_score(prev_row)
-
-# ==============================================================================
-# 5. DATA PROCESSING & EXECUTION LOOP
-# ==============================================================================
-processed_data = []
-
-with st.spinner(f"Scanning {len(watchlist)} global assets across markets..."):
-    for ticker in watchlist:
-        try:
-            # Download asset matrix
-            asset = yf.Ticker(ticker)
-            hist = asset.history(period=lookback_period)
-            
-            if hist.empty or len(hist) < 30:
-                continue
-                
-            # Run data engines
-            hist = calculate_indicators(hist)
-            if hist is None:
-                continue
-                
-            current_score, previous_score = compute_confluence_score(hist)
-            last_row = hist.iloc[-1]
-            
-            # FIXED: Correctly matching the closing curly brace for the dictionary payload
-            processed_data.append({
-                "Asset": ticker,
-                "Current Score": current_score,
-                "Previous Score": previous_score,
-                "Price": round(last_row['Close'], 4),
-                "RSI (14d)": round(last_row['RSI'], 1),
-                "ADX (14d)": round(last_row['ADX'], 1),
-                "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
-            })
-        except Exception:
-            continue 
-
-# ==============================================================================
-# 6. MODERN DASHBOARD VISUALIZATION
-# ==============================================================================
-if processed_data:
-    scan_df = pd.DataFrame(processed_data)
-    
-    # Sort dashboard by largest positive scoring momentum changes
-    scan_df['Score Delta'] = scan_df['Current Score'] - scan_df['Previous Score']
-    scan_df = scan_df.sort_values(by="Current Score", ascending=False)
-    
-    # Main Metrics Grid
-    st.markdown("### 📊 Active Market Watchlist")
-    
-    # Styled table display via native container formatting
-    st.dataframe(
-        scan_df[["Asset", "Current Score", "Previous Score", "Price", "RSI (14d)", "ADX (14d)", "Trend Status"]],
-        use_container_width=True,
-        hide_index=True
-    )
-    
-    # Instant High-Priority Alert Tiers
-    st.markdown("---")
-    st.markdown("### 🎯 Scanner Alerts: High-Conviction Structural Breakouts")
-    
-    # Identify high score assets with ADX trend confirmation
-    high_conviction = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] >= 25.0)]
-    fake_outs = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] < 15.0)]
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 🚀 Validated Structural Breakouts (ADX ≥ 25)")
-        if not high_conviction.empty:
-            for _, asset_row in high_conviction.iterrows():
-                st.success(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
-        else:
-            st.info("No high-conviction breakout trends detected in this cycle.")
-            
-    with col2:
-        st.markdown("#### ⚠️ Low-Velocity Range Grinds (ADX < 15)")
-        if not fake_outs.empty:
-            for _, asset_row in fake_outs.iterrows():
-                st.warning(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
-        else:
-            st.info("No low-velocity range traps detected.")
-else:
-    st.error("No active market assets could be scraped. Verify ticker list formatting or network parameters.")
+# =================================================================
