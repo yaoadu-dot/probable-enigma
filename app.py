@@ -39,7 +39,7 @@ default_tickers = [
 ]
 
 # ==============================================================================
-# 2. SIDEBAR INTERFACE & STRING PARSING FIX
+# 2. SIDEBAR INTERFACE & STRING PARSING
 # ==============================================================================
 st.sidebar.header("Scanner Controls")
 
@@ -123,8 +123,4 @@ def calculate_indicators(df):
             in_trend[i] = in_trend[i-1]
             
     df['Trend'] = in_trend
-    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
-    
-    return df
-
-# =================================================================
+    df['EMA20'] = df['Close'].ewm(span=20, adjust
