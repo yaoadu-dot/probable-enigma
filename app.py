@@ -6,7 +6,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# 1. IMMEDIATE PAGE INITIALIZATION (Prevents Blank Screen Hangs)
+# 1. IMMEDIATE PAGE INITIALIZATION
 st.set_page_config(page_title="Alpha Engine", layout="wide", initial_sidebar_state="expanded")
 
 st.title("🛡️ Alpha Engine: Premium Momentum Scanner")
@@ -37,12 +37,12 @@ default_tickers = [
 ]
 
 # ==============================================================================
-# 3. SIDEBAR INTERACTIVE FILTERS
+# 3. SIDEBAR INTERACTIVE FILTERS (-6 to +6 Expanded Slider)
 # ==============================================================================
 st.sidebar.header("🎛️ Control Panel")
 
-# Score Filtering Slider
-score_range = st.sidebar.slider("Filter Confluence Score", min_value=-4, max_value=4, value=(-4, 4), step=1)
+# Updated Confluence Filter Slider to scale from -6 to +6
+score_range = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
 
 with st.sidebar.expander("📝 Edit Watchlist Assets", expanded=False):
     t_input = st.sidebar.text_area("Tickers (Comma Separated)", ", ".join(default_tickers), height=250)
@@ -54,11 +54,12 @@ lookback = st.sidebar.selectbox("Lookback Data Window", ["6mo", "3mo", "1y"], in
 # 4. MATHEMATICAL INDICATOR ENGINE
 # ==============================================================================
 def calculate_indicators(df):
-    if len(df) < 30: return None
+    if len(df) < 55: return None  # Needs enough history for 50 EMA calculations
     
-    # Trend Overlays
+    # Trend Overlays (Short, Medium, Macro)
     df['EMA5'] = df['Close'].ewm(span=5, adjust=False).mean()
     df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
     
     # RSI Engine
     delta = df['Close'].diff()
@@ -87,10 +88,10 @@ def calculate_indicators(df):
     df['-DM'] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
     
     tr_smooth = df['TR'].ewm(com=13, adjust=False).mean()
-    p_di = 100 * (df['+DM'].ewm(com=13, adjust=False).mean() / (tr_smooth + 1e-10))
-    m_di = 100 * (df['-DM'].ewm(com=13, adjust=False).mean() / (tr_smooth + 1e-10))
+    df['+DI'] = 100 * (df['+DM'].ewm(com=13, adjust=False).mean() / (tr_smooth + 1e-10))
+    df['-DI'] = 100 * (df['-DM'].ewm(com=13, adjust=False).mean() / (tr_smooth + 1e-10))
     
-    dx = 100 * (p_di - m_di).abs() / (p_di + m_di + 1e-10)
+    dx = 100 * (df['+DI'] - df['-DI']).abs() / (df['+DI'] + df['-DI'] + 1e-10)
     df['ADX'] = dx.ewm(com=13, adjust=False).mean()
     
     return df
@@ -101,8 +102,142 @@ def process_state_and_score(df):
     r = df.iloc[-1]   # Current candle
     p = df.iloc[-2]   # Previous candle
     
-    # Pure Multi-Signal Score Confluence (-4 to +4)
-    s = (1 if r['Close'] > r['EMA20'] else -1) + \
-        (1 if r['Close'] > r['EMA5'] else -1) + \
+    # Comprehensive 6-Signal Mathematical Confluence Matrix (-6 to +6 Depth)
+    s = (1 if r['Close'] > r['EMA5'] else -1) + \
+        (1 if r['Close'] > r['EMA20'] else -1) + \
+        (1 if r['Close'] > r['EMA50'] else -1) + \
         (1 if r['RSI'] > 50 else -1) + \
-        (1 if r['MACD_Hist'] > 0 else -1)
+        (1 if r['MACD_Hist'] > 0 else -1) + \
+        (1 if r['+DI'] > r['-DI'] else -1)
+        
+    # State-Machine Status Logic Flow
+    if r['ADX'] < 15:
+        status = "⚪ Neutral"
+    elif r['Close'] > r['EMA20'] and p['Close'] <= p['EMA20']:
+        status = "🚀 Bullish Flip"
+    elif r['Close'] < r['EMA20'] and p['Close'] >= p['EMA20']:
+        status = "🩸 Bearish Flip"
+    elif r['Close'] > r['EMA20']:
+        status = "🟢 Bullish"
+    else:
+        status = "🔴 Bearish"
+        
+    return s, status
+
+# ==============================================================================
+# 5. CACHED DATA INGESTION PIPELINE (Prevents Network Rate-Limiting Blanks)
+# ==============================================================================
+@st.cache_data(ttl=600)  # Caches market data for 10 minutes to protect connection socket
+def fetch_and_build_matrix(tickers_tuple, selected_lookback):
+    processed_nodes, failed_nodes = [], []
+    
+    session = requests.Session()
+    retries = Retry(total=3, backoff_factor=0.3, status_forcelist=)
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+    session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+    
+    tickers_list = list(tickers_tuple)
+    
+    try:
+        data = yf.download(tickers_list, period=selected_lookback, session=session, group_by='ticker', progress=False, timeout=12)
+        
+        if data.empty:
+            return processed_nodes, [{"Asset": "ALL", "Reason": "Data provider returned an empty frame."}]
+            
+        if isinstance(data.columns, pd.MultiIndex):
+            valid_tickers = data.columns.get_level_values(0).unique()
+        else:
+            valid_tickers = [tickers_list] if 'Close' in data.columns else []
+
+        for t in tickers_list:
+            if t not in valid_tickers:
+                failed_nodes.append({"Asset": t, "Reason": "Omitted from provider stream data layout"})
+                continue
+            try:
+                h = data[t].copy() if isinstance(data.columns, pd.MultiIndex) else data.copy()
+                h = h.dropna(subset=['Close'])
+                
+                if len(h) < 55:
+                    failed_nodes.append({"Asset": t, "Reason": f"Insufficient history ({len(h)} rows for 50EMA calculation)"})
+                    continue
+                    
+                h = calculate_indicators(h)
+                if h is not None:
+                    score, status = process_state_and_score(h)
+                    processed_nodes.append({
+                        "Asset": t, "Score": score, "Status": status,
+                        "Price": round(h.iloc[-1]['Close'], 4),
+                        "RSI": round(h.iloc[-1]['RSI'], 1), "ADX": round(h.iloc[-1]['ADX'], 1)
+                    })
+                else:
+                    failed_nodes.append({"Asset": t, "Reason": "Indicator math matrix fault"})
+            except Exception as inner_ex:
+                failed_nodes.append({"Asset": t, "Reason": str(inner_ex)})
+    except Exception as e:
+        return processed_nodes, [{"Asset": "NETWORK", "Reason": str(e)}]
+        
+    return processed_nodes, failed_nodes
+
+# Execute the isolated cache loop pipeline
+processed, failed = fetch_and_build_matrix(tuple(watchlist), lookback)
+
+# ==============================================================================
+# 6. UI PRESENTATION ENGINE (Instant Memory Processing Thread)
+# ==============================================================================
+if processed:
+    df_raw = pd.DataFrame(processed)
+    
+    # Filter output data instantly from cache memory based on the slider state
+    df_final = df_raw[(df_raw['Score'] >= score_range) & (df_raw['Score'] <= score_range)].sort_values("Score", ascending=False)
+    
+    # Executive KPI Metric Blocks
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    with c_m1: st.metric("Total Online Assets", len(df_raw))
+    with c_m2: st.metric("Matches Filter View", len(df_final))
+    with c_m3: st.metric("Bullish Flips 🚀", len(df_raw[df_raw['Status'] == "🚀 Bullish Flip"]))
+    with c_m4: st.metric("Bearish Flips 🩸", len(df_raw[df_raw['Status'] == "🩸 Bearish Flip"]))
+    
+    st.markdown("---")
+    
+    # Modern Tabbed Display Layout
+    tab1, tab2, tab3 = st.tabs(["📊 Main Engine Matrix", "🎯 High-Velocity Alerts", "🔍 System Logs"])
+    
+    with tab1:
+        st.markdown("### Active Watchlist Matrix")
+        st.dataframe(
+            df_final[["Asset", "Score", "Status", "Price", "RSI", "ADX"]], 
+            width="stretch", 
+            hide_index=True
+        )
+        
+    with tab2:
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("#### 🔥 Structural Momentum (+6 Max Confluence & ADX ≥ 25)")
+            breakouts = df_final[(df_final['Score'] == 6) & (df_final['ADX'] >= 25)]
+            if not breakouts.empty:
+                for _, row in breakouts.iterrows():
+                    st.success(f"**{row['Asset']}** | Price: {row['Price']} | ADX: {row['ADX']} | Status: {row['Status']}")
+            else:
+                st.info("No breakout assets meeting max-confluence criteria in this data slice.")
+                
+        with col_right:
+            st.markdown("#### 💤 Range Traps (+6 Max Confluence but ADX < 15)")
+            traps = df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 15)]
+            if not traps.empty:
+                for _, row in traps.iterrows():
+                    st.warning(f"**{row['Asset']}** | Price: {row['Price']} | ADX: {row['ADX']} | Status: {row['Status']}")
+            else:
+                st.info("No range compression grinds captured.")
+
+    with tab3:
+        st.markdown("### Matrix Performance Logs")
+        if failed:
+            st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
+        else:
+            st.success("All systems green. Zero processing faults reported.")
+else:
+    st.error("🚨 System Cache Notice: Data stream calculation is processing or Yahoo connections are temporarily throttling.")
+    if failed:
+        st.markdown("### 🔍 Engine Diagnostic Debug Logs")
+        st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
