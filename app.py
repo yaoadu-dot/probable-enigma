@@ -3,8 +3,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 
 # Page Layout Initialization
 st.set_page_config(page_title="Alpha Engine", layout="wide", initial_sidebar_state="expanded")
@@ -132,22 +130,12 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
     processed_nodes, failed_nodes = [], []
     
     session = requests.Session()
-    
-    # FIXED: Isolated values explicitly to completely prevent syntax truncation faults
-    http_error_codes =
-    retries = Retry(
-        total=3, 
-        backoff_factor=0.3, 
-        status_forcelist=http_error_codes
-    )
-    
-    session.mount('https://', HTTPAdapter(max_retries=retries))
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
     
     tickers_list = list(tickers_tuple)
     
     try:
-        data = yf.download(tickers_list, period=selected_lookback, session=session, group_by='ticker', progress=False, timeout=12)
+        data = yf.download(tickers_list, period=selected_lookback, session=session, group_by='ticker', progress=False, timeout=15)
         
         if data.empty:
             return processed_nodes, [{"Asset": "ALL", "Reason": "Provider stream frame returned completely empty."}]
