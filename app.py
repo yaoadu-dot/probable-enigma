@@ -11,7 +11,7 @@ st.title("🛡️ Alpha Engine: Multi-Asset Momentum Scanner")
 st.markdown("Real-time Game Theory & Technical Confluence Tracking dashboard.")
 
 # ==============================================================================
-# 1. MASTER WATCHLIST CONFIGURATION
+# 1. PURIFIED MASTER WATCHLIST (VERIFIED YFINANCE TICKERS ONLY)
 # ==============================================================================
 default_tickers = [
     # --- TECH, AI & QUANTUM EQUITIES ---
@@ -20,18 +20,13 @@ default_tickers = [
     "CAT", "MU", "META", "TSLA", "AVGO", "MSFT", "GOOGL", "AAPL", "AMZN", "HON", 
     "NVDA", "ORCL", "CRM", "PLTR", "VVV", "MET", "RARE",
 
-    # --- MAJOR & MID-CAP CRYPTOCURRENCIES ---
+    # --- VERIFIED LARGE & MID-CAP CRYPTOCURRENCIES ---
     "BTC-USD", "ETH-USD", "BNB-USD", "ZEC-USD", "XMR-USD", "SOL-USD", "QNT-USD", 
-    "LTC-USD", "DASH-USD", "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", "TON-USD", 
+    "LTC-USD", "DASH-USD", "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", 
     "XRP-USD", "SUI-USD", "AKT-USD", "RAY-USD", "WLD-USD", "ONDO-USD", "TRX-USD", 
-    "XLM-USD", "DOGE-USD", "POL-USD", "JUP-USD",
+    "XLM-USD", "DOGE-USD", "POL-USD", "JUP-USD", "WIF-USD", "BONK-USD", "SHIB-USD", "PEPE-USD",
 
-    # --- SPECULATIVE CRYPTO & MEME TOKENS ---
-    "WIF-USD", "BONK-USD", "SHIB-USD", "PEPE-USD", "HYPE-USD", "DEEP-USD", 
-    "BLUEF-USD", "PUMP-USD", "FARTCOIN-USD", "ALCH-USD", "ARC-USD", "PNUT-USD", 
-    "USELESS-USD", "PENGU-USD", "UFD-USD", "SPX6900-USD",
-
-    # --- GLOBAL COMMODITIES (Futures & Tracking ETFs) ---
+    # --- GLOBAL COMMODITIES ---
     "GC=F", "SI=F", "PL=F", "PA=F", "CL=F", "BZ=F", "HG=F", "LIT",
 
     # --- THEMATIC & SECTOR ETFs ---
@@ -43,11 +38,10 @@ default_tickers = [
 # ==============================================================================
 st.sidebar.header("Scanner Controls")
 
-# Convert Python list into a clean, comma-separated string for Streamlit text area
 default_tickers_string = ", ".join(default_tickers)
 ticker_input = st.sidebar.text_area("Watchlist Tickers (comma separated)", default_tickers_string, height=250)
 
-# Parse inputs accurately and remove structural artifacts
+# Parse inputs accurately
 watchlist = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
 
 # Timeframe Selection
@@ -80,3 +74,187 @@ def calculate_indicators(df):
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = (df['High'] - df['Close'].shift(1)).abs()
     df['L-PC'] = (df['Low'] - df['Close'].shift(1)).abs()
+    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+    
+    up_move = df['High'].diff()
+    down_move = -df['Low'].diff()
+    
+    df['+DM'] = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    df['-DM'] = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+    
+    tr_smooth = df['TR'].ewm(com=13, adjust=False).mean()
+    plus_dm_smooth = df['+DM'].ewm(com=13, adjust=False).mean()
+    minus_dm_smooth = df['-DM'].ewm(com=13, adjust=False).mean()
+    
+    df['+DI'] = 100 * (plus_dm_smooth / (tr_smooth + 1e-10))
+    df['-DI'] = 100 * (minus_dm_smooth / (tr_smooth + 1e-10))
+    
+    dx = 100 * (df['+DI'] - df['-DI']).abs() / (df['+DI'] + df['-DI'] + 1e-10)
+    df['ADX'] = dx.ewm(com=13, adjust=False).mean()
+    
+    # --- 4. SuperTrend Engine ---
+    df['ATR'] = df['TR'].ewm(com=13, adjust=False).mean()
+    multiplier = 3
+    df['Upperband'] = ((df['High'] + df['Low']) / 2) + (multiplier * df['ATR'])
+    df['Lowerband'] = ((df['High'] + df['Low']) / 2) - (multiplier * df['ATR'])
+    
+    upperbands = df['Upperband'].values
+    lowerbands = df['Lowerband'].values
+    closes = df['Close'].values
+    in_trend = np.zeros(len(df))
+    
+    for i in range(1, len(df)):
+        if closes[i-1] > lowerbands[i-1]:
+            lowerbands[i] = max(lowerbands[i], lowerbands[i-1])
+        if closes[i-1] < upperbands[i-1]:
+            upperbands[i] = min(upperbands[i], upperbands[i-1])
+            
+        if closes[i] > upperbands[i-1]:
+            in_trend[i] = 1
+        elif closes[i] < lowerbands[i-1]:
+            in_trend[i] = -1
+        else:
+            in_trend[i] = in_trend[i-1]
+            
+    df['Trend'] = in_trend
+    df['EMA20'] = df['Close'].ewm(span=20, adjust=False).mean()
+    
+    return df
+
+# ==============================================================================
+# 4. CONFLUENCE SCORING SYSTEM (-4 to +4)
+# ==============================================================================
+def compute_confluence_score(df):
+    row = df.iloc[-1]
+    prev_row = df.iloc[-2] if len(df) > 1 else row
+    
+    def calculate_single_score(r):
+        s1 = 1 if r['Close'] > r['EMA20'] else -1
+        s2 = 1 if r['RSI'] > 50 else -1
+        s3 = 1 if r['MACD_Hist'] > 0 else -1
+        s4 = 1 if r['Trend'] == 1 else -1
+        return s1 + s2 + s3 + s4
+
+    return calculate_single_score(row), calculate_single_score(prev_row)
+
+# ==============================================================================
+# 5. ROBUST COLUMN-GROUPED BATCH ENGINE
+# ==============================================================================
+processed_data = []
+failed_assets = []
+
+# Spoof modern desktop browser session headers
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+})
+
+with st.spinner(f"Requesting secure matrix data stream for {len(watchlist)} tickers..."):
+    try:
+        # Download utilizing standard structure layout (gracefully isolates missing/invalid assets)
+        batch_data = yf.download(watchlist, period=lookback_period, session=session, progress=False)
+        
+        if batch_data.empty:
+            st.error("The network data stream returned empty. Yahoo's public endpoints are fully congested for this cloud location.")
+        else:
+            for ticker in watchlist:
+                try:
+                    # Safely piece together single asset dataframe out of the master column blocks
+                    if len(watchlist) == 1:
+                        hist = batch_data.copy()
+                    else:
+                        # Extract columns safely; if a ticker failed on YFinance, this handles it cleanly
+                        if ticker not in batch_data['Close'].columns:
+                            failed_assets.append((ticker, "Ticker completely omitted or unlisted on Yahoo Finance"))
+                            continue
+                        
+                        hist = pd.DataFrame({
+                            'Open': batch_data['Open'][ticker],
+                            'High': batch_data['High'][ticker],
+                            'Low': batch_data['Low'][ticker],
+                            'Close': batch_data['Close'][ticker],
+                            'Volume': batch_data['Volume'][ticker]
+                        })
+                    
+                    hist = hist.dropna(subset=['Close'])
+                    
+                    if hist.empty or len(hist) < 30:
+                        failed_assets.append((ticker, f"Insufficient historical tracking range ({len(hist)} days)"))
+                        continue
+                        
+                    # Calculate tracking indicator confluences
+                    hist = calculate_indicators(hist)
+                    if hist is None:
+                        continue
+                        
+                    current_score, previous_score = compute_confluence_score(hist)
+                    last_row = hist.iloc[-1]
+                    
+                    processed_data.append({
+                        "Asset": ticker,
+                        "Current Score": current_score,
+                        "Previous Score": previous_score,
+                        "Price": round(last_row['Close'], 4),
+                        "RSI (14d)": round(last_row['RSI'], 1),
+                        "ADX (14d)": round(last_row['ADX'], 1),
+                        "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
+                    })
+                except Exception as parse_err:
+                    failed_assets.append((ticker, f"Data alignment skip: {str(parse_err)}"))
+                    continue
+    except Exception as general_err:
+        st.error(f"Core Batch Engine Fault: {str(general_err)}")
+
+# Render Engine Logging inside Sidebar for explicit asset isolation
+if failed_assets:
+    with st.sidebar.expander("⚠️ Engine Logs: Skipped Tickers"):
+        for t, reason in failed_assets:
+            st.write(f"**{t}**: {reason}")
+
+# ==============================================================================
+# 6. MODERN DASHBOARD VISUALIZATION
+# ==============================================================================
+if processed_data:
+    scan_df = pd.DataFrame(processed_data)
+    
+    # Sort dashboard layout by strongest momentum ranking
+    scan_df['Score Delta'] = scan_df['Current Score'] - scan_df['Previous Score']
+    scan_df = scan_df.sort_values(by="Current Score", ascending=False)
+    
+    # Main Metrics Grid
+    st.markdown("### 📊 Active Market Watchlist")
+    
+    st.dataframe(
+        scan_df[["Asset", "Current Score", "Previous Score", "Price", "RSI (14d)", "ADX (14d)", "Trend Status"]],
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # Instant High-Priority Alert Tiers
+    st.markdown("---")
+    st.markdown("### 🎯 Scanner Alerts: High-Conviction Structural Breakouts")
+    
+    high_conviction = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] >= 25.0)]
+    fake_outs = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] < 15.0)]
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 🚀 Validated Structural Breakouts (ADX ≥ 25)")
+        if not high_conviction.empty:
+            for _, asset_row in high_conviction.iterrows():
+                st.success(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
+        else:
+            st.info("No high-conviction breakout trends detected in this cycle.")
+            
+    with col2:
+        st.markdown("#### ⚠️ Low-Velocity Range Grinds (ADX < 15)")
+        if not fake_outs.empty:
+            for _, asset_row in fake_outs.iterrows():
+                st.warning(f"**{asset_row['Asset']}** | Score: 4 (Was {asset_row['Previous Score']}) | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
+        else:
+            st.info("No low-velocity range traps detected.")
+else:
+    st.error("No active market assets could be parsed. The data provider connection timed out or blocked the cloud server node completely.")
