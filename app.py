@@ -5,12 +5,7 @@ import numpy as np
 import requests
 
 # Page Layout Initialization
-st.set_page_config(
-    page_title="Alpha Engine", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
-
+st.set_page_config(page_title="Alpha Engine", layout="wide", initial_sidebar_state="expanded")
 st.title("🛡️ Alpha Engine: Premium Momentum Scanner")
 st.markdown("Multi-asset quantitative confluence tracking dashboard.")
 
@@ -18,35 +13,18 @@ st.markdown("""
     <style>
         .block-container {padding-top: 1.5rem; padding-bottom: 1.5rem;}
         h1 {font-weight: 800; letter-spacing: -1px;}
-        .stMetric {
-            background-color: rgba(128, 128, 128, 0.05); 
-            padding: 15px; 
-            border-radius: 10px; 
-            border: 1px solid rgba(128, 128, 128, 0.2);
-        }
+        .stMetric {background-color: rgba(128, 128, 128, 0.05); padding: 15px; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2);}
     </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 1. WATCHLIST DEFINITION & STATE PERSISTENCE
+# 1. WATCHLIST DEFINITION
 # ==============================================================================
-default_tickers = [
-    "MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", 
-    "CLSK", "WULF", "QUBT", "CORZ", "NBIS", "BE", "TSM", "CBRS", "HUT", "TTWO", 
-    "CAT", "MU", "META", "TSLA", "AVGO", "MSFT", "GOOGL", "AAPL", "AMZN", "HON", 
-    "NVDA", "ORCL", "CRM", "PLTR", "VVV", "MET", "RARE", "BTC-USD", "ETH-USD", 
-    "BNB-USD", "ZEC-USD", "XMR-USD", "SOL-USD", "QNT-USD", "LTC-USD", "DASH-USD", 
-    "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", "XRP-USD", "XLM-USD", "DOGE-USD", 
-    "JUP-USD", "WIF-USD", "BONK-USD", "SHIB-USD", "GC=F", "SI=F", "PL=F", "PA=F", 
-    "CL=F", "BZ=F", "HG=F", "LIT", "GLTR", "PALL", "REMX", "SIL", "BOTZ", "IGV", 
-    "AIQU", "REXC"
-]
-
-if "persisted_tickers" not in st.session_state:
-    st.session_state["persisted_tickers"] = ", ".join(default_tickers)
+default_tickers = ["MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", "CLSK", "WULF", "QUBT", "CORZ", "NBIS", "BE", "TSM", "CBRS", "HUT", "TTWO", "CAT", "MU", "META", "TSLA", "AVGO", "MSFT", "GOOGL", "AAPL", "AMZN", "HON", "NVDA", "ORCL", "CRM", "PLTR", "VVV", "MET", "RARE", "BTC-USD", "ETH-USD", "BNB-USD", "ZEC-USD", "XMR-USD", "SOL-USD", "QNT-USD", "LTC-USD", "DASH-USD", "LINK-USD", "INJ-USD", "ICP-USD", "NEAR-USD", "XRP-USD", "XLM-USD", "DOGE-USD", "JUP-USD", "WIF-USD", "BONK-USD", "SHIB-USD", "GC=F", "SI=F", "PL=F", "PA=F", "CL=F", "BZ=F", "HG=F", "LIT", "GLTR", "PALL", "REMX", "SIL", "BOTZ", "IGV", "AIQU", "REXC"]
+if "persisted_tickers" not in st.session_state: st.session_state["persisted_tickers"] = ", ".join(default_tickers)
 
 # ==============================================================================
-# 2. SIDEBAR INTERACTIVE FILTERS
+# 2. SIDEBAR FILTERS
 # ==============================================================================
 st.sidebar.header("🎛️ Control Panel")
 score_selection = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
@@ -60,7 +38,7 @@ watchlist = [t.strip().upper() for t in t_input.split(",") if t.strip()]
 lookback = st.sidebar.selectbox("Lookback Data Window", ["6mo", "3mo", "1y"], index=0)
 
 # ==============================================================================
-# 3. QUANTITATIVE INDICATOR ENGINE
+# 3. QUANTITATIVE ENGINE
 # ==============================================================================
 def calculate_indicators(df):
     if len(df) < 55: return None
@@ -87,4 +65,76 @@ def calculate_indicators(df):
     return df
 
 def get_score_from_row(r):
-    return (1 if r['Close'] > r['EMA5'] else -1) + (1 if r['Close'] > r['EMA20']
+    score = 0
+    score += 1 if r['Close'] > r['EMA5'] else -1
+    score += 1 if r['Close'] > r['EMA20'] else -1
+    score += 1 if r['Close'] > r['EMA50'] else -1
+    score += 1 if r['RSI'] > 50 else -1
+    score += 1 if r['MACD_Hist'] > 0 else -1
+    score += 1 if r['+DI'] > r['-DI'] else -1
+    return score
+
+def process_state_and_score(df):
+    if len(df) < 3: return 0, 0, "⚪ Neutral"
+    r, p = df.iloc[-1], df.iloc[-2]
+    curr_score = get_score_from_row(r)
+    prev_score = get_score_from_row(p)
+    status = "⚪ Neutral" if r['ADX'] < 15 else ("🚀 Bullish Flip" if r['Close'] > r['EMA20'] and p['Close'] <= p['EMA20'] else ("🩸 Bearish Flip" if r['Close'] < r['EMA20'] and p['Close'] >= p['EMA20'] else ("🟢 Bullish" if r['Close'] > r['EMA20'] else "🔴 Bearish")))
+    return curr_score, prev_score, status
+
+# ==============================================================================
+# 4. DATA PIPELINE
+# ==============================================================================
+@st.cache_data(ttl=600)
+def fetch_and_build_matrix(tickers_tuple, selected_lookback):
+    processed_nodes, failed_nodes = [], []
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    tickers_list = list(tickers_tuple)
+    try:
+        data = yf.download(tickers_list, period=selected_lookback, session=session, group_by='ticker', progress=False, timeout=15)
+        if data.empty: return processed_nodes, [{"Asset": "ALL", "Reason": "Empty stream frame."}]
+        valid_tickers = data.columns.get_level_values(0).unique() if isinstance(data.columns, pd.MultiIndex) else ([tickers_list] if 'Close' in data.columns else [])
+        for t in tickers_list:
+            if t not in valid_tickers: continue
+            try:
+                h = calculate_indicators(data[t].copy().dropna(subset=['Close']) if isinstance(data.columns, pd.MultiIndex) else data.copy().dropna(subset=['Close']))
+                if h is not None:
+                    score, prev_score, status = process_state_and_score(h)
+                    processed_nodes.append({"Asset": t, "Score": score, "Prev Score": prev_score, "Status": status, "Price": round(h.iloc[-1]['Close'], 4), "RSI": round(h.iloc[-1]['RSI'], 1), "ADX": round(h.iloc[-1]['ADX'], 1)})
+            except: continue
+    except: pass
+    return processed_nodes, failed_nodes
+
+processed, failed = fetch_and_build_matrix(tuple(watchlist), lookback)
+
+# ==============================================================================
+# 5. VISUALIZATION
+# ==============================================================================
+if processed:
+    df_raw = pd.DataFrame(processed)
+    df_final = df_raw[(df_raw['Score'] >= min_score) & (df_raw['Score'] <= max_score)].sort_values("Score", ascending=False)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Online", len(df_raw)); c2.metric("Matches", len(df_final)); c3.metric("Bullish Flips", len(df_raw[df_raw['Status'] == "🚀 Bullish Flip"])); c4.metric("Bearish Flips", len(df_raw[df_raw['Status'] == "🩸 Bearish Flip"]))
+    
+    st.markdown("---")
+    t1, t2, t3 = st.tabs(["📊 Main Engine", "🎯 Alerts", "🔍 Logs"])
+    
+    with t1:
+        st.dataframe(df_final[["Asset", "Score", "Prev Score", "Status", "Price", "RSI", "ADX"]], width="stretch", hide_index=True)
+        
+    with t2:
+        col_left, col_right = st.columns(2)
+        with col_left:
+            st.markdown("#### 🔥 Momentum (+6 & ADX ≥ 25)")
+            for _, row in df_final[(df_final['Score'] == 6) & (df_final['ADX'] >= 25)].iterrows():
+                st.success(f"{row['Asset']} | Price: {row['Price']} | Score Change: {row['Prev Score']} → {row['Score']}")
+        with col_right:
+            st.markdown("#### 💤 Traps (+6 & ADX < 15)")
+            for _, row in df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 15)].iterrows():
+                st.warning(f"{row['Asset']} | Price: {row['Price']} | Score Change: {row['Prev Score']} → {row['Score']}")
+
+    with t3:
+        if failed: st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
+        else: st.success("Systems green.")
