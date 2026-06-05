@@ -144,9 +144,7 @@ failed_assets = []
 
 session = requests.Session()
 session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 })
 
 with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
@@ -154,7 +152,7 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
         batch_data = yf.download(watchlist, period=lookback_period, session=session, group_by='ticker', progress=False)
         
         if batch_data.empty:
-            st.error("The network stream returned completely empty. Yahoo Finance is entirely blocking this cloud instance.")
+            st.error("The network stream returned completely empty.")
         else:
             if isinstance(batch_data.columns, pd.MultiIndex):
                 available_tickers = batch_data.columns.get_level_values(0).unique()
@@ -163,7 +161,7 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
 
             for ticker in watchlist:
                 if ticker not in available_tickers:
-                    failed_assets.append({"Asset": ticker, "Reason": "Completely skipped/dropped by Yahoo API"})
+                    failed_assets.append({"Asset": ticker, "Reason": "Skipped by Yahoo API"})
                     continue
                     
                 try:
@@ -175,12 +173,12 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
                     hist = hist.dropna(subset=['Close'])
                     
                     if hist.empty or len(hist) < 30:
-                        failed_assets.append({"Asset": ticker, "Reason": f"Empty or insufficient history ({len(hist)} rows)"})
+                        failed_assets.append({"Asset": ticker, "Reason": f"Insufficient history ({len(hist)} rows)"})
                         continue
                         
                     hist = calculate_indicators(hist)
                     if hist is None:
-                        failed_assets.append({"Asset": ticker, "Reason": "Indicator processing engine returned None"})
+                        failed_assets.append({"Asset": ticker, "Reason": "Engine math error"})
                         continue
                         
                     current_score, previous_score = compute_confluence_score(hist)
@@ -196,7 +194,7 @@ with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
                         "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
                     })
                 except Exception as parse_err:
-                    failed_assets.append({"Asset": ticker, "Reason": f"Parsing exception: {str(parse_err)}"})
+                    failed_assets.append({"Asset": ticker, "Reason": str(parse_err)})
                     continue
     except Exception as general_err:
         st.error(f"Core Matrix Download Exception: {str(general_err)}")
@@ -217,4 +215,30 @@ if processed_data:
     )
     
     st.markdown("---")
-    st.markdown("### 🎯 Scanner Alerts: High-Conviction Structural Break
+    st.markdown("### 🎯 Scanner Alerts: High-Conviction Breakouts")
+    
+    high_conviction = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] >= 25.0)]
+    fake_outs = scan_df[(scan_df['Current Score'] == 4) & (scan_df['ADX (14d)'] < 15.0)]
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("#### 🚀 Validated Breakouts (ADX ≥ 25)")
+        if not high_conviction.empty:
+            for _, asset_row in high_conviction.iterrows():
+                st.success(f"**{asset_row['Asset']}** | Score: 4 | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
+        else:
+            st.info("No breakouts detected.")
+            
+    with col2:
+        st.markdown("#### ⚠️ Range Grinds (ADX < 15)")
+        if not fake_outs.empty:
+            for _, asset_row in fake_outs.iterrows():
+                st.warning(f"**{asset_row['Asset']}** | Score: 4 | ADX: {asset_row['ADX (14d)']} | RSI: {asset_row['RSI (14d)']}")
+        else:
+            st.info("No range traps detected.")
+
+else:
+    st.error("🚨 Critical Failure: Data arrived, but no assets could be parsed.")
+    if failed_assets:
+        st.markdown("### 🔍 Engine Diagnostic Logs")
+        st.dataframe(pd.DataFrame(failed_assets), use_container_width=True, hide_index=True)
