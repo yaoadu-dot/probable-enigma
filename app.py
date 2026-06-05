@@ -6,13 +6,13 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-# 1. IMMEDIATE PAGE INITIALIZATION
+# Page Layout Initialization
 st.set_page_config(page_title="Alpha Engine", layout="wide", initial_sidebar_state="expanded")
 
 st.title("🛡️ Alpha Engine: Premium Momentum Scanner")
 st.markdown("Multi-asset quantitative confluence tracking dashboard.")
 
-# Custom Premium Styling Layer
+# Premium Theme UI Styles
 st.markdown("""
     <style>
         .block-container {padding-top: 1.5rem; padding-bottom: 1.5rem;}
@@ -22,7 +22,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. WATCHLIST DEFINITION
+# 1. WATCHLIST DEFINITION
 # ==============================================================================
 default_tickers = [
     "MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR", "IONQ", "HOOD", 
@@ -37,11 +37,11 @@ default_tickers = [
 ]
 
 # ==============================================================================
-# 3. SIDEBAR INTERACTIVE FILTERS (-6 to +6 Expanded Slider)
+# 2. SIDEBAR INTERACTIVE FILTERS (-6 to +6 Slider Scale)
 # ==============================================================================
 st.sidebar.header("🎛️ Control Panel")
 
-# Updated Confluence Filter Slider to scale from -6 to +6
+# Confluence filter slider scaled exactly from -6 to +6
 score_range = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
 
 with st.sidebar.expander("📝 Edit Watchlist Assets", expanded=False):
@@ -51,10 +51,10 @@ watchlist = [t.strip().upper() for t in t_input.split(",") if t.strip()]
 lookback = st.sidebar.selectbox("Lookback Data Window", ["6mo", "3mo", "1y"], index=0)
 
 # ==============================================================================
-# 4. MATHEMATICAL INDICATOR ENGINE
+# 3. QUANTITATIVE INDICATOR ENGINE
 # ==============================================================================
 def calculate_indicators(df):
-    if len(df) < 55: return None  # Needs enough history for 50 EMA calculations
+    if len(df) < 55: return None
     
     # Trend Overlays (Short, Medium, Macro)
     df['EMA5'] = df['Close'].ewm(span=5, adjust=False).mean()
@@ -74,7 +74,7 @@ def calculate_indicators(df):
     e26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD_Hist'] = (e12 - e26) - (e12 - e26).ewm(span=9, adjust=False).mean()
     
-    # ADX Directional Engine
+    # ADX Engine
     df['TR'] = pd.concat([
         df['High'] - df['Low'], 
         (df['High'] - df['Close'].shift()).abs(), 
@@ -99,10 +99,10 @@ def calculate_indicators(df):
 def process_state_and_score(df):
     if len(df) < 3: return 0, "⚪ Neutral"
         
-    r = df.iloc[-1]   # Current candle
-    p = df.iloc[-2]   # Previous candle
+    r = df.iloc[-1]   # Current Row
+    p = df.iloc[-2]   # Prior Row
     
-    # Comprehensive 6-Signal Mathematical Confluence Matrix (-6 to +6 Depth)
+    # Complete 6-Signal Confluence Score System (-6 to +6 Depth Matrix)
     s = (1 if r['Close'] > r['EMA5'] else -1) + \
         (1 if r['Close'] > r['EMA20'] else -1) + \
         (1 if r['Close'] > r['EMA50'] else -1) + \
@@ -110,7 +110,7 @@ def process_state_and_score(df):
         (1 if r['MACD_Hist'] > 0 else -1) + \
         (1 if r['+DI'] > r['-DI'] else -1)
         
-    # State-Machine Status Logic Flow
+    # State-Machine Status Logic Flow System
     if r['ADX'] < 15:
         status = "⚪ Neutral"
     elif r['Close'] > r['EMA20'] and p['Close'] <= p['EMA20']:
@@ -125,14 +125,22 @@ def process_state_and_score(df):
     return s, status
 
 # ==============================================================================
-# 5. CACHED DATA INGESTION PIPELINE (Prevents Network Rate-Limiting Blanks)
+# 4. HIGH-AVAILABILITY CACHED NETWORK DATA PIPELINE
 # ==============================================================================
-@st.cache_data(ttl=600)  # Caches market data for 10 minutes to protect connection socket
+@st.cache_data(ttl=600)
 def fetch_and_build_matrix(tickers_tuple, selected_lookback):
     processed_nodes, failed_nodes = [], []
     
     session = requests.Session()
-    retries = Retry(total=3, backoff_factor=0.3, status_forcelist=)
+    
+    # FIXED: Isolated values explicitly to completely prevent syntax truncation faults
+    http_error_codes =
+    retries = Retry(
+        total=3, 
+        backoff_factor=0.3, 
+        status_forcelist=http_error_codes
+    )
+    
     session.mount('https://', HTTPAdapter(max_retries=retries))
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
     
@@ -142,7 +150,7 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
         data = yf.download(tickers_list, period=selected_lookback, session=session, group_by='ticker', progress=False, timeout=12)
         
         if data.empty:
-            return processed_nodes, [{"Asset": "ALL", "Reason": "Data provider returned an empty frame."}]
+            return processed_nodes, [{"Asset": "ALL", "Reason": "Provider stream frame returned completely empty."}]
             
         if isinstance(data.columns, pd.MultiIndex):
             valid_tickers = data.columns.get_level_values(0).unique()
@@ -151,14 +159,14 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
 
         for t in tickers_list:
             if t not in valid_tickers:
-                failed_nodes.append({"Asset": t, "Reason": "Omitted from provider stream data layout"})
+                failed_nodes.append({"Asset": t, "Reason": "Omitted from streaming data block layout"})
                 continue
             try:
                 h = data[t].copy() if isinstance(data.columns, pd.MultiIndex) else data.copy()
                 h = h.dropna(subset=['Close'])
                 
                 if len(h) < 55:
-                    failed_nodes.append({"Asset": t, "Reason": f"Insufficient history ({len(h)} rows for 50EMA calculation)"})
+                    failed_nodes.append({"Asset": t, "Reason": f"Insufficient history ({len(h)} bars)"})
                     continue
                     
                 h = calculate_indicators(h)
@@ -170,7 +178,7 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
                         "RSI": round(h.iloc[-1]['RSI'], 1), "ADX": round(h.iloc[-1]['ADX'], 1)
                     })
                 else:
-                    failed_nodes.append({"Asset": t, "Reason": "Indicator math matrix fault"})
+                    failed_nodes.append({"Asset": t, "Reason": "Indicator processing logic failure"})
             except Exception as inner_ex:
                 failed_nodes.append({"Asset": t, "Reason": str(inner_ex)})
     except Exception as e:
@@ -178,19 +186,19 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
         
     return processed_nodes, failed_nodes
 
-# Execute the isolated cache loop pipeline
+# Run the cached download wrapper logic loop
 processed, failed = fetch_and_build_matrix(tuple(watchlist), lookback)
 
 # ==============================================================================
-# 6. UI PRESENTATION ENGINE (Instant Memory Processing Thread)
+# 5. MODERN VISUALIZATION LAYER
 # ==============================================================================
 if processed:
     df_raw = pd.DataFrame(processed)
     
-    # Filter output data instantly from cache memory based on the slider state
+    # Dynamic in-memory sorting filtered instantly via the slider parameters
     df_final = df_raw[(df_raw['Score'] >= score_range) & (df_raw['Score'] <= score_range)].sort_values("Score", ascending=False)
     
-    # Executive KPI Metric Blocks
+    # Summary Card Grid Layer
     c_m1, c_m2, c_m3, c_m4 = st.columns(4)
     with c_m1: st.metric("Total Online Assets", len(df_raw))
     with c_m2: st.metric("Matches Filter View", len(df_final))
@@ -199,7 +207,7 @@ if processed:
     
     st.markdown("---")
     
-    # Modern Tabbed Display Layout
+    # Streamlit Tab Layout Architecture
     tab1, tab2, tab3 = st.tabs(["📊 Main Engine Matrix", "🎯 High-Velocity Alerts", "🔍 System Logs"])
     
     with tab1:
@@ -213,22 +221,22 @@ if processed:
     with tab2:
         col_left, col_right = st.columns(2)
         with col_left:
-            st.markdown("#### 🔥 Structural Momentum (+6 Max Confluence & ADX ≥ 25)")
+            st.markdown("#### 🔥 Structural Momentum (+6 Max Score & ADX ≥ 25)")
             breakouts = df_final[(df_final['Score'] == 6) & (df_final['ADX'] >= 25)]
             if not breakouts.empty:
                 for _, row in breakouts.iterrows():
                     st.success(f"**{row['Asset']}** | Price: {row['Price']} | ADX: {row['ADX']} | Status: {row['Status']}")
             else:
-                st.info("No breakout assets meeting max-confluence criteria in this data slice.")
+                st.info("No breakouts matching criteria in this data loop cycle.")
                 
         with col_right:
-            st.markdown("#### 💤 Range Traps (+6 Max Confluence but ADX < 15)")
+            st.markdown("#### 💤 Range Traps (+6 Max Score but ADX < 15)")
             traps = df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 15)]
             if not traps.empty:
                 for _, row in traps.iterrows():
                     st.warning(f"**{row['Asset']}** | Price: {row['Price']} | ADX: {row['ADX']} | Status: {row['Status']}")
             else:
-                st.info("No range compression grinds captured.")
+                st.info("No compressed range compression traps captured.")
 
     with tab3:
         st.markdown("### Matrix Performance Logs")
@@ -237,7 +245,7 @@ if processed:
         else:
             st.success("All systems green. Zero processing faults reported.")
 else:
-    st.error("🚨 System Cache Notice: Data stream calculation is processing or Yahoo connections are temporarily throttling.")
+    st.error("🚨 System Cache Notice: Data matrix is processing or endpoint traffic is throttling connection frames.")
     if failed:
         st.markdown("### 🔍 Engine Diagnostic Debug Logs")
         st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
