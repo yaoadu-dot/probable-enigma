@@ -137,65 +137,78 @@ def compute_confluence_score(df):
     return calculate_single_score(row), calculate_single_score(prev_row)
 
 # ==============================================================================
-# 5. ROBUST TICKER-ISOLATED BATCH ENGINE
+# 5. ROBUST TICKER-ISOLATED BATCH ENGINE WITH ITERATIVE FALLBACK
 # ==============================================================================
 processed_data = []
 failed_assets = []
 
 session = requests.Session()
 session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 })
 
 with st.spinner(f"Running secure matrix scan for {len(watchlist)} assets..."):
     try:
+        # Initial primary batch download request
         batch_data = yf.download(watchlist, period=lookback_period, session=session, group_by='ticker', progress=False)
         
         if batch_data.empty:
-            st.error("The network stream returned completely empty.")
+            st.warning("Primary batch download failed. Dropping back to iterative individual processing channel...")
+            available_tickers = []
         else:
             if isinstance(batch_data.columns, pd.MultiIndex):
                 available_tickers = batch_data.columns.get_level_values(0).unique()
             else:
                 available_tickers = [watchlist] if len(watchlist) == 1 else []
 
-            for ticker in watchlist:
-                if ticker not in available_tickers:
-                    failed_assets.append({"Asset": ticker, "Reason": "Skipped by Yahoo API"})
-                    continue
-                    
+        for ticker in watchlist:
+            hist = None
+            
+            # If the ticker was successfully obtained in bulk
+            if ticker in available_tickers:
                 try:
                     if isinstance(batch_data.columns, pd.MultiIndex):
                         hist = batch_data[ticker].copy()
                     else:
                         hist = batch_data.copy()
-                        
-                    hist = hist.dropna(subset=['Close'])
-                    
-                    if hist.empty or len(hist) < 30:
-                        failed_assets.append({"Asset": ticker, "Reason": f"Insufficient history ({len(hist)} rows)"})
-                        continue
-                        
-                    hist = calculate_indicators(hist)
-                    if hist is None:
-                        failed_assets.append({"Asset": ticker, "Reason": "Engine math error"})
-                        continue
-                        
-                    current_score, previous_score = compute_confluence_score(hist)
-                    last_row = hist.iloc[-1]
-                    
-                    processed_data.append({
-                        "Asset": ticker,
-                        "Current Score": current_score,
-                        "Previous Score": previous_score,
-                        "Price": round(last_row['Close'], 4),
-                        "RSI (14d)": round(last_row['RSI'], 1),
-                        "ADX (14d)": round(last_row['ADX'], 1),
-                        "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
-                    })
-                except Exception as parse_err:
-                    failed_assets.append({"Asset": ticker, "Reason": str(parse_err)})
+                except Exception:
+                    hist = None
+
+            # Fallback Routine: If bulk failed/skipped, query yahoo individually
+            if hist is None or hist.dropna(subset=['Close']).empty:
+                try:
+                    hist = yf.Ticker(ticker).history(period=lookback_period)
+                except Exception as individual_err:
+                    failed_assets.append({"Asset": ticker, "Reason": f"Direct API Reject: {str(individual_err)}"})
                     continue
+
+            try:
+                hist = hist.dropna(subset=['Close'])
+                if hist.empty or len(hist) < 30:
+                    failed_assets.append({"Asset": ticker, "Reason": f"Insufficient history rows ({len(hist)})"})
+                    continue
+                    
+                hist = calculate_indicators(hist)
+                if hist is None:
+                    failed_assets.append({"Asset": ticker, "Reason": "Engine calculation breakdown"})
+                    continue
+                    
+                current_score, previous_score = compute_confluence_score(hist)
+                last_row = hist.iloc[-1]
+                
+                processed_data.append({
+                    "Asset": ticker,
+                    "Current Score": current_score,
+                    "Previous Score": previous_score,
+                    "Price": round(last_row['Close'], 4),
+                    "RSI (14d)": round(last_row['RSI'], 1),
+                    "ADX (14d)": round(last_row['ADX'], 1),
+                    "Trend Status": "🟢 Bullish" if last_row['Trend'] == 1 else "🔴 Bearish"
+                })
+            except Exception as parse_err:
+                failed_assets.append({"Asset": ticker, "Reason": f"Parsing Error: {str(parse_err)}"})
+                continue
+                
     except Exception as general_err:
         st.error(f"Core Matrix Download Exception: {str(general_err)}")
 
@@ -210,7 +223,7 @@ if processed_data:
     st.markdown("### 📊 Active Market Watchlist")
     st.dataframe(
         scan_df[["Asset", "Current Score", "Previous Score", "Price", "RSI (14d)", "ADX (14d)", "Trend Status"]],
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
     
@@ -241,4 +254,4 @@ else:
     st.error("🚨 Critical Failure: Data arrived, but no assets could be parsed.")
     if failed_assets:
         st.markdown("### 🔍 Engine Diagnostic Logs")
-        st.dataframe(pd.DataFrame(failed_assets), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(failed_assets), width="stretch", hide_index=True)
