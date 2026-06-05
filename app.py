@@ -24,8 +24,13 @@ default_tickers = ["MRVL", "PLUG", "RGTI", "IREN", "QBTS", "CRWV", "MSTR", "CIFR
 if "persisted_tickers" not in st.session_state: st.session_state["persisted_tickers"] = ", ".join(default_tickers)
 
 # ==============================================================================
-# 2. SIDEBAR FILTERS
+# 2. ASSET CLASSIFICATION & FILTERS
 # ==============================================================================
+def classify_asset(ticker):
+    if "-USD" in ticker: return "Crypto"
+    if "=F" in ticker: return "Commodity"
+    return "Stock/ETF"
+
 st.sidebar.header("🎛️ Control Panel")
 score_selection = st.sidebar.slider("Filter Confluence Score", min_value=-6, max_value=6, value=(-6, 6), step=1)
 min_score, max_score = score_selection if isinstance(score_selection, tuple) else (score_selection, score_selection)
@@ -101,7 +106,16 @@ def fetch_and_build_matrix(tickers_tuple, selected_lookback):
                 h = calculate_indicators(data[t].copy().dropna(subset=['Close']) if isinstance(data.columns, pd.MultiIndex) else data.copy().dropna(subset=['Close']))
                 if h is not None:
                     score, prev_score, status = process_state_and_score(h)
-                    processed_nodes.append({"Asset": t, "Score": score, "Prev Score": prev_score, "Status": status, "Price": round(h.iloc[-1]['Close'], 4), "RSI": round(h.iloc[-1]['RSI'], 1), "ADX": round(h.iloc[-1]['ADX'], 1)})
+                    processed_nodes.append({
+                        "Asset": t, 
+                        "Class": classify_asset(t), 
+                        "Score": score, 
+                        "Prev Score": prev_score, 
+                        "Status": status, 
+                        "Price": round(h.iloc[-1]['Close'], 4), 
+                        "RSI": round(h.iloc[-1]['RSI'], 1), 
+                        "ADX": round(h.iloc[-1]['ADX'], 1)
+                    })
             except: continue
     except: pass
     return processed_nodes, failed_nodes
@@ -122,18 +136,18 @@ if processed:
     t1, t2, t3 = st.tabs(["📊 Main Engine", "🎯 Alerts", "🔍 Logs"])
     
     with t1:
-        st.dataframe(df_final[["Asset", "Score", "Prev Score", "Status", "Price", "RSI", "ADX"]], width="stretch", hide_index=True)
+        st.dataframe(df_final[["Asset", "Class", "Score", "Prev Score", "Status", "Price", "RSI", "ADX"]], width="stretch", hide_index=True)
         
     with t2:
         col_left, col_right = st.columns(2)
         with col_left:
             st.markdown("#### 🔥 Momentum (+6 & ADX ≥ 25)")
             for _, row in df_final[(df_final['Score'] == 6) & (df_final['ADX'] >= 25)].iterrows():
-                st.success(f"{row['Asset']} | Price: {row['Price']} | Score Change: {row['Prev Score']} → {row['Score']}")
+                st.success(f"{row['Asset']} | {row['Class']} | Score Change: {row['Prev Score']} → {row['Score']}")
         with col_right:
             st.markdown("#### 💤 Traps (+6 & ADX < 15)")
             for _, row in df_final[(df_final['Score'] == 6) & (df_final['ADX'] < 15)].iterrows():
-                st.warning(f"{row['Asset']} | Price: {row['Price']} | Score Change: {row['Prev Score']} → {row['Score']}")
+                st.warning(f"{row['Asset']} | {row['Class']} | Score Change: {row['Prev Score']} → {row['Score']}")
 
     with t3:
         if failed: st.dataframe(pd.DataFrame(failed), width="stretch", hide_index=True)
